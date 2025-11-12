@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useCalorieContext } from "../context/CalorieContext";
 import { analyzeFood } from "../lib/openai";
 
@@ -14,15 +14,36 @@ declare global {
   }
 }
 
+const formatDateForInput = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const formatTimeForInput = (date: Date) => {
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${hours}:${minutes}`;
+};
+
 const FoodInput = () => {
   const [input, setInput] = useState("");
   const [isListening, setIsListening] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [entryDate, setEntryDate] = useState("");
+  const [entryTime, setEntryTime] = useState("");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
 
   const { addEntry } = useCalorieContext();
+
+  useEffect(() => {
+    const now = new Date();
+    setEntryDate(formatDateForInput(now));
+    setEntryTime(formatTimeForInput(now));
+  }, []);
 
   const startListening = () => {
     if (
@@ -73,8 +94,13 @@ const FoodInput = () => {
     setIsListening(false);
   };
 
-  const handleSubmit = async (text = input) => {
+  const handleSubmit = async (
+    text = input,
+    customDateTime?: { date: string; time: string }
+  ) => {
     if (!text.trim()) return;
+
+    if (isLoading) return;
 
     setIsLoading(true);
     setError("");
@@ -86,6 +112,18 @@ const FoodInput = () => {
       }
 
       const entry = await analyzeFood(text, apiKey);
+
+      // Override the timestamp if custom date/time provided
+      const dateToUse = customDateTime?.date || entryDate;
+      const timeToUse = customDateTime?.time || entryTime;
+
+      if (dateToUse && timeToUse) {
+        const customTimestamp = new Date(`${dateToUse}T${timeToUse}`);
+        if (!Number.isNaN(customTimestamp.getTime())) {
+          entry.timestamp = customTimestamp.toISOString();
+        }
+      }
+
       addEntry(entry);
       setInput("");
     } catch (err) {
@@ -113,6 +151,31 @@ const FoodInput = () => {
         >
           {isListening ? "🔴" : "🎤"}
         </button>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-2">
+        <div>
+          <label className="block text-xs font-medium mb-1 text-gray-600">
+            Date
+          </label>
+          <input
+            type="date"
+            value={entryDate}
+            onChange={(e) => setEntryDate(e.target.value)}
+            className="w-full border p-2 rounded text-sm"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium mb-1 text-gray-600">
+            Time
+          </label>
+          <input
+            type="time"
+            value={entryTime}
+            onChange={(e) => setEntryTime(e.target.value)}
+            className="w-full border p-2 rounded text-sm"
+          />
+        </div>
       </div>
 
       {error && <div className="text-red-500 text-sm mb-2">{error}</div>}

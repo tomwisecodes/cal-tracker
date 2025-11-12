@@ -29,8 +29,29 @@ export interface DailyTotal {
   entries: number;
 }
 
+export type WeightUnit = "kg" | "lb";
+
+export interface WeightEntry {
+  id: string;
+  timestamp: string;
+  weightKg: number;
+}
+
+export type PooHealthStatus = "healthy" | "unhealthy";
+
+export interface PooEntry {
+  id: string;
+  timestamp: string;
+  healthStatus: PooHealthStatus;
+  abdominalPain: boolean;
+  bladderPain: boolean;
+  notes?: string;
+}
+
 export interface UserSettings {
   openai_api_key?: string;
   daily_goal?: number;
   theme?: "light" | "dark";
+  weight_unit?: WeightUnit;
 }
+

@@ -4,11 +4,11 @@ import React from "react";
 import { useCalorieContext } from "../context/CalorieContext";
 
 const TodaysSummary = () => {
-  const { getTodaysTotal, getTodaysMacros } = useCalorieContext();
+  const { getTodaysTotal, getTodaysMacros, settings } = useCalorieContext();
 
   const totalCalories = getTodaysTotal();
   const macros = getTodaysMacros();
-  const dailyGoal = 2000; // TODO: Get from settings
+  const dailyGoal = settings.daily_goal || 2000;
   const progress = Math.min((totalCalories / dailyGoal) * 100, 100);
 
   const formatDate = (date: Date) => {

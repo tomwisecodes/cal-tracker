@@ -6,13 +6,22 @@ import React, {
   useState,
   useEffect,
   ReactNode,
+  useMemo,
 } from "react";
-import { CalorieEntry, DailyTotal, UserSettings } from "../lib/types";
+import {
+  CalorieEntry,
+  DailyTotal,
+  UserSettings,
+  WeightEntry,
+  PooEntry,
+} from "../lib/types";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 
 interface CalorieContextType {
   entries: CalorieEntry[];
   dailyTotals: DailyTotal[];
+  weightEntries: WeightEntry[];
+  pooEntries: PooEntry[];
   settings: UserSettings;
   addEntry: (entry: CalorieEntry) => void;
   updateEntry: (id: string, entry: Partial<CalorieEntry>) => void;
@@ -22,6 +31,13 @@ interface CalorieContextType {
   getEntriesForDate: (date: string) => CalorieEntry[];
   getTodaysMacros: () => { protein: number; carbs: number; fat: number };
   getWeeklyTotals: () => DailyTotal[];
+  addWeightEntry: (timestamp: string, weightKg: number) => void;
+  updateWeightEntry: (timestamp: string, weightKg: number) => void;
+  deleteWeightEntry: (timestamp: string) => void;
+  getWeightEntriesForDate: (date: string) => WeightEntry[];
+  addPooEntry: (entry: PooEntry) => void;
+  deletePooEntry: (id: string) => void;
+  getPooEntriesForDate: (date: string) => PooEntry[];
 }
 
 export const CalorieContext = createContext<CalorieContextType | undefined>(
@@ -50,6 +66,81 @@ export function CalorieProvider({ children }: CalorieProviderProps) {
     {}
   );
   const [dailyTotals, setDailyTotals] = useState<DailyTotal[]>([]);
+  const [weightLog, setWeightLog] = useLocalStorage<Record<string, number>>(
+    "weight_log",
+    {}
+  );
+  const [pooEntries, setPooEntries] = useLocalStorage<PooEntry[]>(
+    "poo_entries",
+    []
+  );
+
+  const weightEntries = useMemo<WeightEntry[]>(() => {
+    return Object.entries(weightLog)
+      .map(([timestamp, weightKg]) => ({
+        id: timestamp,
+        timestamp,
+        weightKg,
+      }))
+      .sort(
+        (a, b) =>
+          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      );
+  }, [weightLog]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const legacyRaw = window.localStorage.getItem("weight_entries");
+      if (!legacyRaw) return;
+
+      const parsed = JSON.parse(legacyRaw) as unknown;
+      if (!Array.isArray(parsed)) {
+        window.localStorage.removeItem("weight_entries");
+        return;
+      }
+
+      const converted = parsed.reduce<Record<string, number>>(
+        (acc, item) => {
+          if (
+            item &&
+            typeof item === "object" &&
+            "timestamp" in item &&
+            typeof (item as { timestamp?: unknown }).timestamp === "string"
+          ) {
+            const timestamp = (item as { timestamp: string }).timestamp;
+            const weight =
+              typeof (item as { weightKg?: unknown }).weightKg === "number"
+                ? (item as { weightKg: number }).weightKg
+                : typeof (item as { weight?: unknown }).weight === "number"
+                ? (item as { weight: number }).weight
+                : null;
+            if (typeof weight === "number") {
+              acc[timestamp] = weight;
+            }
+          }
+          return acc;
+        },
+        {}
+      );
+
+      if (Object.keys(converted).length === 0) {
+        window.localStorage.removeItem("weight_entries");
+        return;
+      }
+
+      setWeightLog((prev) => {
+        if (Object.keys(prev).length > 0) {
+          return prev;
+        }
+        return converted;
+      });
+
+      window.localStorage.removeItem("weight_entries");
+    } catch (error) {
+      console.error("Failed to migrate legacy weight entries:", error);
+    }
+  }, [setWeightLog]);
 
   // Calculate daily totals whenever entries change
   useEffect(() => {
@@ -77,6 +168,28 @@ export function CalorieProvider({ children }: CalorieProviderProps) {
     setSettings((prev) => ({ ...prev, ...newSettings }));
   };
 
+  const addWeightEntry = (timestamp: string, weightKg: number) => {
+    setWeightLog((prev) => ({
+      ...prev,
+      [timestamp]: weightKg,
+    }));
+  };
+
+  const updateWeightEntry = (timestamp: string, weightKg: number) => {
+    setWeightLog((prev) => ({
+      ...prev,
+      [timestamp]: weightKg,
+    }));
+  };
+
+  const deleteWeightEntry = (timestamp: string) => {
+    setWeightLog((prev) => {
+      const updated = { ...prev };
+      delete updated[timestamp];
+      return updated;
+    });
+  };
+
   const getTodaysTotal = (): number => {
     const today = new Date().toISOString().split("T")[0];
     const todaysEntries = entries.filter(
@@ -102,6 +215,26 @@ export function CalorieProvider({ children }: CalorieProviderProps) {
 
   const getEntriesForDate = (date: string): CalorieEntry[] => {
     return entries.filter((entry) => entry.timestamp.split("T")[0] === date);
+  };
+
+  const getWeightEntriesForDate = (date: string): WeightEntry[] => {
+    return weightEntries.filter(
+      (entry) => entry.timestamp.split("T")[0] === date
+    );
+  };
+
+  const addPooEntry = (entry: PooEntry) => {
+    setPooEntries((prev) => [entry, ...prev]);
+  };
+
+  const deletePooEntry = (id: string) => {
+    setPooEntries((prev) => prev.filter((entry) => entry.id !== id));
+  };
+
+  const getPooEntriesForDate = (date: string): PooEntry[] => {
+    return pooEntries.filter(
+      (entry) => entry.timestamp.split("T")[0] === date
+    );
   };
 
   const getWeeklyTotals = (): DailyTotal[] => {
@@ -137,6 +270,8 @@ export function CalorieProvider({ children }: CalorieProviderProps) {
   const value: CalorieContextType = {
     entries,
     dailyTotals,
+    weightEntries,
+    pooEntries,
     settings,
     addEntry,
     updateEntry,
@@ -146,6 +281,13 @@ export function CalorieProvider({ children }: CalorieProviderProps) {
     getEntriesForDate,
     getTodaysMacros,
     getWeeklyTotals,
+    addWeightEntry,
+    updateWeightEntry,
+    deleteWeightEntry,
+    getWeightEntriesForDate,
+    addPooEntry,
+    deletePooEntry,
+    getPooEntriesForDate,
   };
 
   return (
